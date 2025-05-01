@@ -14,16 +14,6 @@ load_dotenv()
 
 # ---------------------------- Helper Functions ----------------------------
 
-def pull_model(model_name):
-    st.write(f"Pulling `{model_name}` model...")
-    try:
-        subprocess.run(["ollama", "pull", model_name], check=True, capture_output=True, text=True)
-        st.success(f"Model `{model_name}` pulled successfully.")
-        return True
-    except subprocess.CalledProcessError as e:
-        st.error(f"Failed to pull model: {e}")
-        return False
-
 def is_ollama_model_available(model_name: str) -> bool:
     try:
         result = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
@@ -33,70 +23,34 @@ def is_ollama_model_available(model_name: str) -> bool:
         return False
 
 def ready_model(model_name):
-    key_prefix = f"{model_name}_status"
+    key = f"{model_name}_status"
+    if key not in st.session_state:
+        st.session_state[key] = {"checked": False, "available": False, "model": None}
+    state = st.session_state[key]
 
-    # Initialize session state for the model
-    if key_prefix not in st.session_state:
-        st.session_state[key_prefix] = {
-            "checked": False,
-            "available": False,
-            "declined": False,
-            "model": None,
-            "pull_requested": False,
-        }
-
-    state = st.session_state[key_prefix]
-
-    # Check once if model is available
     if not state["checked"]:
-        state["checked"] = True
         state["available"] = is_ollama_model_available(model_name)
+        state["checked"] = True
 
-    if state["available"]:
-        if state["model"] is None:
-            st.info(f"Model `{model_name}` is available and ready to use.")
-            state["model"] = OllamaLLM(model=model_name)
+    if state["available"] and state["model"] is None:
+        st.info(f"Model `{model_name}` is available and ready to use.")
+        state["model"] = OllamaLLM(model=model_name)
         return state["model"]
 
-    if state["declined"]:
-        st.warning(f"You chose not to download `{model_name}`. Cannot proceed.")
-        return None
-
-    if state["pull_requested"]:
-        with st.spinner(f"Pulling `{model_name}`..."):
-            success = pull_model(model_name)
-            if success:
-                state["available"] = True
-                state["model"] = OllamaLLM(model=model_name)
-                st.success(f"Model `{model_name}` is now ready!")
-                return state["model"]
-            else:
-                st.error(f"Failed to pull model `{model_name}`.")
-                return None
-
-    # Ask user to pull or decline
-    st.warning(f"Model `{model_name}` is not available on your system.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ Download Model", key=f"{model_name}_pull"):
-            state["pull_requested"] = True
-            st.rerun()
-    with col2:
-        if st.button("❌ No, Thanks", key=f"{model_name}_decline"):
-            state["declined"] = True
-            st.rerun()
-
-    st.info("Please choose whether to download the model.")
-    return None
-
+    if not state["available"]:
+        st.error(f"Model `{model_name}` is not available on your system.")
+        st.info(
+            f"Please run the following command in your terminal:\n\n"
+            f"```\nollama pull {model_name}\n```"
+            "\nRefresh the page once the model is downloaded."
+        )
+    return state["model"]
 
 def fetch_transcript(video_id):
     if not video_id:
         return None
 
-    if ('https' in video_id) or ('youtu' in video_id):
-        # Extract ID from full URL
+    if 'https' in video_id or 'youtu' in video_id:
         match = re.search(r"(?<=youtu.be/).*(?=\?)", video_id)
         if match:
             video_id = match.group()
@@ -118,15 +72,13 @@ def generate_summary(transcript, model):
         input_variables=["transcript"]
     )
     final_prompt = prompt.format(transcript=transcript)
-    answer = model.invoke(final_prompt)
-    return answer
+    return model.invoke(final_prompt)
 
 # ---------------------------- Streamlit UI ----------------------------
 
 def app():
     st.title("🎬 YouTube Video Summarizer")
 
-    # Sidebar inputs
     video_id = st.sidebar.text_input("Enter YouTube Video URL/ID", placeholder="ID or URL")
     modelOptions = st.sidebar.selectbox(
         "Choose model for generation",
