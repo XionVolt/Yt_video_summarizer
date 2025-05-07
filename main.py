@@ -3,14 +3,12 @@ import os
 import subprocess
 import re
 
-from dotenv import load_dotenv
 from youtube_transcript_api import YouTubeTranscriptApi
 from langchain_core.prompts import PromptTemplate
 from langchain_ollama.llms import OllamaLLM
 import streamlit as st
 
 # ---------------------------- Setup ----------------------------
-load_dotenv()
 
 # ---------------------------- Helper Functions ----------------------------
 
